@@ -1,14 +1,6 @@
-require("Class")
-require("Clone")
-local Logger = require("Manager/Logger")
+require("Dir/Logger")
+local Test = require("Test")
 
-local logger = Logger.GetInstance()
-logger:Log("main log")
+print("This is main")
 
-
-local Widget = require("Artifact/Widget")
-local widget = Widget.new()
-widget:Run()
-local Player = require("Artifact/Player")
-local Player = Player.new()
-Player:Run()
+Test.Run()
