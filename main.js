@@ -2,6 +2,7 @@ const fs = require("fs")
 const path = require("path")
 const readline = require("readline")
 const luamin = require("luamin")
+const logger = require("./logger")
 
 const codeHeader = `
 local __modules = {}
@@ -40,7 +41,7 @@ function recurseFiles(name) {
     }
     const fpath = path.join(workDir, name + ".lua")
     if (!fs.existsSync(fpath) || !fs.statSync(fpath).isFile()) {
-        console.log(`File not found ${fpath}`)
+        logger.error(`File not found ${fpath}`)
         return
     }
     const newNames = []
@@ -68,25 +69,56 @@ function recurseFiles(name) {
     }
 }
 
+function findUnusedFiles(dir, list, dirbase) {
+    if (dirbase === undefined) {
+        dirbase = ""
+    } else {
+        dirbase = dirbase + "/"
+    }
+    const files = fs.readdirSync(dir)
+    for (const file of files) {
+        const full = path.join(dir, file)
+        const st = fs.statSync(full)
+        if (st.isFile()) {
+            if (file.endsWith(".lua")) {
+                const base = path.basename(full, ".lua")
+                const key = dirbase + base
+                if (requireList[key] === undefined) {
+                    list.push(key)
+                }
+            }
+        } else if (st.isDirectory()) {
+            findUnusedFiles(full, list, dirbase + path.basename(file))
+        } else {
+            logger.error("WTF is " + full)
+        }
+    }
+}
+
 /**
  * @param {fs.PathLike} mainPath
  * @returns {string}
  */
 function emitCode(mainPath) {
     if (!fs.existsSync(mainPath) || !fs.statSync(mainPath).isFile()) {
-        console.log(`File not found ${mainPath}`)
+        logger.error(`File not found ${mainPath}`)
         return ""
     }
     workDir = path.dirname(mainPath)
     outStr = codeHeader
     const mainName = path.basename(mainPath, ".lua")
     recurseFiles(mainName)
+    const unused = []
+    findUnusedFiles(workDir, unused)
+    for (const file of unused) {
+        logger.warn("Unused file " + file)
+    }
     return outStr + `\n__modules["${mainName}"].loader()`
 }
 
 function injectWC3(mainPath, wc3path, mode) {
     if (!fs.existsSync(wc3path) || !fs.statSync(wc3path).isFile()) {
-        console.log(`File not found ${wc3path}`)
+        logger.error(`File not found ${wc3path}`)
         return
     }
     let file = emitCode(mainPath)
@@ -98,6 +130,7 @@ function injectWC3(mainPath, wc3path, mode) {
     })
     let state = 0
     let outFile = ""
+    let changed = false
     ri.on("line", function (line) {
         if (line.trim() === endMark) {
             outFile += file + "\n"
@@ -108,6 +141,7 @@ function injectWC3(mainPath, wc3path, mode) {
         }
         if (state === 0 && line === "function main()") {
             state = 1
+            changed = true
         }
         if (state === 1 && line === "end") {
             outFile += startMark + "\n"
@@ -117,17 +151,23 @@ function injectWC3(mainPath, wc3path, mode) {
         }
         if (line.trim() === startMark) {
             state = 2
+            changed = true
         }
         outFile += line + "\n"
     })
     ri.on("close", function () {
         fs.writeFileSync(wc3path, outFile)
+        if (changed) {
+            logger.success("Write to war3map.lua success")
+        } else {
+            logger.error("Target file is not war3map.lua")
+        }
     })
 }
 
 function toFile(mainPath, outPath, mode) {
     if (fs.existsSync(outPath) && fs.statSync(outPath).isDirectory()) {
-        console.log(`Target is dir ${outPath}`)
+        logger.error(`Target is dir ${outPath}`)
         return
     }
     let file = emitCode(mainPath)
@@ -135,6 +175,7 @@ function toFile(mainPath, outPath, mode) {
         file = luamin.minify(file)
     }
     fs.writeFileSync(outPath, file)
+    logger.success(`Write to ${outPath} success`)
 }
 
 module.exports = {

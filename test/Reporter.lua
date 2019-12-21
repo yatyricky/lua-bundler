@@ -1,0 +1,3 @@
+function Reporter(...)
+    print(...)
+end
