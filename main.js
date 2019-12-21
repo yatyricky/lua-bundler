@@ -24,7 +24,7 @@ end
 const startMark = "--nef-inject"
 const endMark = "--nef-inject-end"
 
-const regex = new RegExp(/^(?!--).*require\(["']([a-zA-Z\/]+)["']\).*$/gm)
+const regex = new RegExp(/^(?!--).*require\(["']([a-zA-Z0-9\/]+)["']\).*$/gm)
 let workDir = "."
 /**
  * @type {{[key: string] : boolean}}
