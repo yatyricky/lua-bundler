@@ -125,6 +125,13 @@ function injectWC3(mainPath, wc3path, mode) {
     if (mode === "-p") {
         file = luamin.minify(file)
     }
+    file = file.replace(/'(....)'/gm, (a, b) => {
+        const v1 = b.charCodeAt(0) << 24
+        const v2 = b.charCodeAt(1) << 16
+        const v3 = b.charCodeAt(2) << 8
+        const v4 = b.charCodeAt(3)
+        return v1 | v2 | v3 | v4
+    })
     const ri = readline.createInterface({
         input: fs.createReadStream(wc3path),
     })
