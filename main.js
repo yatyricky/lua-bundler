@@ -24,7 +24,7 @@ end
 const startMark = "--nef-inject"
 const endMark = "--nef-inject-end"
 
-const regex = new RegExp(/^(?!--).*require\(["']([a-zA-Z0-9\/]+)["']\).*$/gm)
+const regex = new RegExp(/^(?!--)(.*require)[ \t]*\(?["']([a-zA-Z0-9\/\._]+)["']\)?.*$/gm)
 let workDir = "."
 /**
  * @type {{[key: string] : boolean}}
@@ -45,7 +45,9 @@ function recurseFiles(name) {
         return
     }
     const newNames = []
-    const file = fs.readFileSync(fpath).toString()
+    const file = fs.readFileSync(fpath).toString().replace(regex, (m, p1, p2) => {
+        return `${p1}("${p2.replace(/\./g, "/")}")`
+    })
     outStr += `\n----------------\n`
     outStr += `__modules["${name}"] = { inited = false, cached = false, loader = function(...)`
     outStr += `\n---- START ${name}.lua ----\n`
@@ -58,9 +60,9 @@ function recurseFiles(name) {
     do {
         match = regex.exec(file)
         if (match !== null) {
-            if (requireList[match[1]] === undefined) {
-                requireList[match[1]] = false
-                newNames.push(match[1])
+            if (requireList[match[2]] === undefined) {
+                requireList[match[2]] = false
+                newNames.push(match[2])
             }
         }
     } while (match !== null)

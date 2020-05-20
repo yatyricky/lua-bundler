@@ -20,7 +20,7 @@ __modules["Main"] = { inited = false, cached = false, loader = function(...)
 require("Dir/Logger")
 local Test = require("Test")
 
-print("This is main")
+print("This is main", 'hfoo')
 
 Test.Run()
 

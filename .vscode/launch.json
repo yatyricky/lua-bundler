@@ -4,6 +4,18 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+    {
+        "name": "launch lua",
+        "type": "lua",
+        "request": "launch",
+        "stopOnEntry": true,
+        "program": "${workspaceFolder}/bundle.lua",
+        "cwd": "${workspaceFolder}",
+        "path": "${workspaceFolder}/?.lua",
+        "cpath": "${workspaceFolder}/?.dll",
+        "arg": [],
+        "consoleCoding": "utf8"
+    },
         {
             "type": "node",
             "request": "launch",
