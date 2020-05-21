@@ -3,20 +3,20 @@
 Bundle Lua files into one:
 
 ``` sh
-lua-bundler f "../test/Main.lua" "../output.lua"
+lua-bundler f "./example/src/Main.lua" "./example/dist/bundle.lua"
 ```
 
 Inject to war3map.lua:
 
 ``` sh
-lua-bundler w "../test/Main.lua" "../war3map.lua"
+lua-bundler w "./example/src/Main.lua" "./example/dist/war3map.lua"
 ```
 
 Add ```-p``` (production) to minify bundled lua
 
 ``` sh
-lua-bundler f "../test/Main.lua" "../output.lua" -p
-lua-bundler w "../test/Main.lua" "../war3map.lua" -p
+lua-bundler f "./example/src/Main.lua" "./example/dist/bundle.lua" -p
+lua-bundler w "./example/src/Main.lua" "./example/dist/war3map.lua" -p
 ```
 
 ## Require flavours
