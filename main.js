@@ -29,7 +29,7 @@ let workDir = "."
 /**
  * @type {{[key: string] : boolean}}
  */
-const requireList = {}
+let requireList = {}
 let outStr
 
 /**
@@ -166,6 +166,7 @@ function injectWC3(mainPath, wc3path, mode) {
     })
     ri.on("close", function () {
         fs.writeFileSync(wc3path, outFile)
+        requireList = {}
         if (changed) {
             logger.success("Write to war3map.lua success")
         } else {
@@ -185,6 +186,7 @@ function toFile(mainPath, outPath, mode) {
     }
     fs.writeFileSync(outPath, file)
     logger.success(`Write to ${outPath} success`)
+    requireList = {}
 }
 
 module.exports = {
