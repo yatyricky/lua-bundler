@@ -112,9 +112,8 @@ function emitCode(mainPath) {
     recurseFiles(mainName)
     const unused = []
     findUnusedFiles(workDir, unused)
-    for (const file of unused) {
-        logger.warn("Unused file " + file + ".lua")
-    }
+    
+    logger.warn("Unused files : " + unused.length + " 개")
     return outStr + `\n__modules["${mainName}"].loader()`
 }
 
