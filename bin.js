@@ -1,12 +1,13 @@
 const main = require("./main")
 
 const args = process.argv.slice(2)
-if (args.length < 3) {
-    console.log("cli <f|w> <input.lua> <output.lua> [-p|-d]")
+if (args.length < 2) {
+    console.log("lua-bundler <input.lua> <output.lua> [-p]")
     return
 }
-if (args[0] === "w") {
-    main.injectWC3(args[1], args[2], args[3])
+
+if (args[1].endsWith("war3map.lua")) {
+    main.injectWC3(args[0], args[1], args[2])
 } else {
-    main.toFile(args[1], args[2], args[3])
+    main.toFile(args[0], args[1], args[2])
 }

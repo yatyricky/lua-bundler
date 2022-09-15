@@ -5,7 +5,7 @@
   "main": "main.js",
   "bin": "bin.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node ./bin.js ./example/src/Main.lua ./example/dist/bundle.lua"
   },
   "author": "Nef.",
   "license": "MIT",
