@@ -23,6 +23,9 @@ function recurseFiles(dir) {
                 outStr += `\nend}\n`
             }
         } else if (st.isDirectory()) {
+            if (file.endsWith(".w3m") || file.endsWith(".w3x") || file.startsWith(".")) {
+                continue
+            }
             recurseFiles(fp)
         } else {
             logger.error("WTF is " + fp)
@@ -62,6 +65,7 @@ local require = function(path)
 end
 `
     workDir = path.resolve(path.dirname(mainPath))
+    logger.log("Working directory: " + workDir)
     recurseFiles(workDir)
     const mainName = path.basename(mainPath, ".lua")
     outStr += `\n__modules["${mainName}"].loader()`
@@ -83,6 +87,7 @@ const headerWrapStart = "local function RunBundle()"
  * @returns {void}
  */
 function injectWC3(mainPath, wc3path, mode) {
+    logger.log("Injection mode")
     if (!fs.existsSync(wc3path) || !fs.statSync(wc3path).isFile()) {
         logger.error(`File not found ${wc3path}`)
         return
@@ -138,6 +143,7 @@ function injectWC3(mainPath, wc3path, mode) {
  * @returns {void}
  */
 function toFile(mainPath, outPath, mode) {
+    logger.log("Write file mode")
     if (fs.existsSync(outPath) && fs.statSync(outPath).isDirectory()) {
         logger.error(`Target is dir ${outPath}`)
         return
