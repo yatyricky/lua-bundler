@@ -77,7 +77,14 @@ end
 
 const headerSize = 9
 const headerLead = "--lua-bundler:"
-const headerWrapStart = "local function RunBundle()"
+const overhead1 = `--lua-bundler:ReplaceMe
+local function RunBundle()
+`
+const overhead2 = `
+end
+--lua-bundler:ReplaceMe
+
+`
 
 /**
  * Bundles lua source and inject into war3map.lua
@@ -93,10 +100,11 @@ function injectWC3(mainPath, wc3path, mode) {
         return
     }
     let file = emitCode(mainPath, mode === "-p")
-    let sourceLen = file.length.toString()
+    let sourceLen = (file.length + overhead1.length + overhead2.length).toString()
     for (let i = sourceLen.length; i < headerSize; i++) {
         sourceLen = "0" + sourceLen
     }
+    file = `${overhead1.replace("ReplaceMe", sourceLen)}${file}${overhead2.replace("ReplaceMe", sourceLen)}`
     const all = fs.readFileSync(wc3path).toString()
     if (all.startsWith(headerLead)) {
         // replace
@@ -111,7 +119,7 @@ function injectWC3(mainPath, wc3path, mode) {
             input: fs.createReadStream(wc3path),
         })
         let state = 0
-        let outFile = `--lua-bundler:${sourceLen}\nlocal function RunBundle()\n${file}\nend\n\n`
+        let outFile = `--lua-bundler:${sourceLen}\nlocal function RunBundle()\n${file}\nend\n${headerLead}\n`
         let changed = false
         ri.on("line", (line) => {
             if (state === 0 && line === "function main()") {
@@ -119,7 +127,11 @@ function injectWC3(mainPath, wc3path, mode) {
                 changed = true
             }
             if (state === 1 && line === "end") {
-                outFile += "RunBundle()\n"
+                outFile += `local s, m = pcall(RunBundle)
+if not s then
+    print(m)
+end
+`
                 state = 0
             }
             outFile += line + "\n"
