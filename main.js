@@ -4,6 +4,14 @@ const readline = require("readline")
 const luamin = require("luamin")
 const logger = require("./logger")
 
+function tryParseInt(any) {
+    try {
+        return parseInt(any, 10)
+    } catch (error) {
+        return 0
+    }
+}
+
 let workDir
 let outStr
 
@@ -65,7 +73,6 @@ local require = function(path)
 end
 `
     workDir = path.resolve(path.dirname(mainPath))
-    logger.log("Working directory: " + workDir)
     recurseFiles(workDir)
     const mainName = path.basename(mainPath, ".lua")
     outStr += `\n__modules["${mainName}"].loader()`
@@ -100,26 +107,46 @@ function injectWC3(mainPath, wc3path, mode) {
         return
     }
     let file = emitCode(mainPath, mode === "-p")
-    let sourceLen = (file.length + overhead1.length + overhead2.length).toString()
+    const totalLen = file.length + overhead1.length + overhead2.length
+    // pad source length with leading 0s
+    let sourceLen = totalLen.toString()
     for (let i = sourceLen.length; i < headerSize; i++) {
         sourceLen = "0" + sourceLen
     }
+
     file = `${overhead1.replace("ReplaceMe", sourceLen)}${file}${overhead2.replace("ReplaceMe", sourceLen)}`
+    if (totalLen !== file.length) {
+        logger.error("source length calculation failed")
+        return
+    }
+
     const all = fs.readFileSync(wc3path).toString()
     if (all.startsWith(headerLead)) {
         // replace
-        const currCodeLen = parseInt(all.substring(headerLead.length, headerLead.length + headerSize))
-        const body = all.substring(headerLead.length + headerSize + 1 + headerWrapStart.length + 1 + currCodeLen)
-        const newFile = `${headerLead}${sourceLen}\n${headerWrapStart}\n${file}${body}`
+        const currCodeLen = tryParseInt(all.substring(headerLead.length, headerLead.length + headerSize))
+        if (currCodeLen === 0) {
+            logger.error("Read already injected war3map.lua header failed. Please re-save map in WorldEditor and try again.")
+            return
+        }
+
+        // verify
+        const verification = tryParseInt(all.substring(currCodeLen - headerSize - 2, currCodeLen - 2)) // 2 LF
+        if (currCodeLen !== verification) {
+            logger.error("war3map.lua source may have been changed manually (injected source length check failed). Please re-save map in WorldEditor and try again.")
+            return
+        }
+
+        const body = all.substring(currCodeLen)
+        const newFile = `${file}${body}`
         fs.writeFileSync(wc3path, newFile)
-        logger.success(`Write to ${wc3path} success`)
+        logger.success(`Update ${wc3path} success. Injected source length: ${currCodeLen} => ${totalLen}.`)
     } else {
         // inject new
         const ri = readline.createInterface({
             input: fs.createReadStream(wc3path),
         })
         let state = 0
-        let outFile = `--lua-bundler:${sourceLen}\nlocal function RunBundle()\n${file}\nend\n${headerLead}\n`
+        let outFile = file
         let changed = false
         ri.on("line", (line) => {
             if (state === 0 && line === "function main()") {
@@ -139,7 +166,7 @@ end
         ri.on("close", () => {
             fs.writeFileSync(wc3path, outFile)
             if (changed) {
-                logger.success(`Write to ${wc3path} success`)
+                logger.success(`Write ${wc3path} success. Injected source length: ${totalLen}.`)
             } else {
                 logger.error("Target file is not war3map.lua")
             }
