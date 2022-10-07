@@ -12,11 +12,18 @@ If target file name is `war3map.lua`, inject bundled source to it:
 lua-bundler "./example/src/Main.lua" "./example/dist/war3map.lua"
 ```
 
-Add ```-p``` (production) to minify bundled lua
+Add ```-p, --production``` to minify bundled lua
 
 ``` sh
 lua-bundler "./example/src/Main.lua" "./example/dist/bundle.lua" -p
 lua-bundler "./example/src/Main.lua" "./example/dist/war3map.lua" -p
+```
+
+Add ```-e, --exclude``` to exclude certain files and directories
+
+``` sh
+lua-bundler "./example/src/Main.lua" "./example/dist/bundle.lua" -e "example/src/Reporter.lua"
+lua-bundler "./example/src/Main.lua" "./example/dist/bundle.lua" -e "example/src/Reporter.lua;example\src\Dir"
 ```
 
 ## Require flavours
