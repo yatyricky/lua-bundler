@@ -84,7 +84,7 @@ end
     workDir = path.resolve(path.dirname(mainPath))
     const excludeMap = { files: {}, dirs: {} }
     for (const excludePath of exclude) {
-        const resolvedExcludePath = path.resolve(excludePath)
+        const resolvedExcludePath = path.resolve(path.join(workDir, excludePath))
         if (!fs.existsSync(resolvedExcludePath)) {
             logger.error(`Cannot resolve path ${resolvedExcludePath}`)
             process.exit(1)
