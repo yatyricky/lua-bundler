@@ -29,7 +29,7 @@ function recurseFiles(dir, excludeMap) {
             }
 
             if (file.endsWith(".lua")) {
-                const moduleName = fp.replace(workDir, "").substring(1).replace("\\", ".").replace(".lua", "")
+                const moduleName = fp.replace(workDir, "").substring(1).replace(/\\/g, ".").replace(".lua", "")
                 outStr += `\n__modules["${moduleName}"]={loader=function()\n`
                 outStr += fs.readFileSync(fp)
                 outStr += `\nend}\n`
