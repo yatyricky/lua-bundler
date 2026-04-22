@@ -2,6 +2,7 @@
   "name": "lua-bundler",
   "version": "1.0.0",
   "description": "",
+  "type": "module",
   "main": "main.js",
   "bin": "bin.js",
   "scripts": {

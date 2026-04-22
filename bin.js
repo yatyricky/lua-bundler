@@ -1,5 +1,5 @@
-const logger = require("./logger")
-const main = require("./main")
+import logger from "./logger.js"
+import * as main from "./main.js"
 
 const args = process.argv.slice(2)
 

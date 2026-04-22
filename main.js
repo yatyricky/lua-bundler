@@ -1,8 +1,8 @@
-const fs = require("fs")
-const path = require("path")
-const readline = require("readline")
-const luamin = require("luamin")
-const logger = require("./logger")
+import fs from "fs"
+import path from "path"
+import readline from "readline"
+import luamin from "luamin"
+import logger from "./logger.js"
 
 function tryParseInt(any) {
     try {
@@ -237,7 +237,7 @@ function toFile(mainPath, outPath, mode, exclude, defines) {
     logger.success(`Write to ${outPath} success`)
 }
 
-module.exports = {
+export {
     injectWC3,
     toFile,
 }

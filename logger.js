@@ -1,4 +1,4 @@
-module.exports = {
+export default {
     success: function (...params) {
         if (params.length > 0) {
             params[0] = "\u001B[32m" + params[0] + "\u001B[0m"
