@@ -22,47 +22,122 @@ let outStr
  * @param {Set<string>} defines
  * @returns {string}
  */
+/**
+ * Tokenises a boolean expression into an array of tokens.
+ * Tokens are: '(', ')', 'OR', 'AND', or flag identifiers.
+ * @param {string} expr
+ * @returns {string[]}
+ */
+function tokenize(expr) {
+    const tokens = []
+    const re = /\(|\)|NOT|OR|AND|[A-Za-z_][A-Za-z0-9_]*/g
+    let m
+    while ((m = re.exec(expr)) !== null) {
+        tokens.push(m[0])
+    }
+    return tokens
+}
+
+/**
+ * Evaluates a boolean expression against a set of defined flags.
+ * Grammar:
+ *   expr     := or_expr
+ *   or_expr  := and_expr ('OR' and_expr)*
+ *   and_expr := atom ('AND' atom)*
+ *   atom     := NOT atom | FLAG | '(' expr ')'
+ * @param {string} expr
+ * @param {Set<string>} defines
+ * @returns {boolean}
+ */
+function evalExpr(expr, defines) {
+    const tokens = tokenize(expr)
+    let pos = 0
+
+    function peek() { return tokens[pos] }
+    function consume() { return tokens[pos++] }
+
+    function parseOr() {
+        let result = parseAnd()
+        while (peek() === "OR") {
+            consume()
+            result = parseAnd() || result
+        }
+        return result
+    }
+
+    function parseAnd() {
+        let result = parseAtom()
+        while (peek() === "AND") {
+            consume()
+            result = parseAtom() && result
+        }
+        return result
+    }
+
+    function parseAtom() {
+        const tok = peek()
+        if (tok === "NOT") {
+            consume()
+            return !parseAtom()
+        }
+        if (tok === "(") {
+            consume()
+            const result = parseOr()
+            if (peek() !== ")") throw new Error(`Expected ')' in --#IF expression: ${expr}`)
+            consume()
+            return result
+        }
+        if (tok === undefined) throw new Error(`Unexpected end of --#IF expression: ${expr}`)
+        consume()
+        return defines.has(tok)
+    }
+
+    return parseOr()
+}
+
 function preprocess(source, defines) {
-    return source.replace(/--#IF (\S+) THEN\r?\n([\s\S]*?)--#END/g, (_, flag, body) => {
-        return defines.has(flag) ? body : ""
+    return source.replace(/--#IF (.+?) THEN\r?\n([\s\S]*?)--#END/g, (_, expr, body) => {
+        return evalExpr(expr.trim(), defines) ? body : ""
     })
 }
 
 /**
- * @param {fs.PathLike} dirName relative path
+ * Extracts all static require("...") module names from a Lua source string.
+ * @param {string} source preprocessed Lua source
+ * @returns {string[]}
  */
-function recurseFiles(dir, excludeMap, defines) {
-    const files = fs.readdirSync(dir)
-    for (const file of files) {
-        const fp = path.join(dir, file)
-        const st = fs.statSync(fp)
-        if (st.isFile()) {
-            if (excludeMap.files[fp] === 1) {
-                continue
-            }
-
-            if (file.endsWith(".lua")) {
-                const moduleName = fp.replace(workDir, "").substring(1).replace(/\\/g, ".").replace(".lua", "")
-                const raw = fs.readFileSync(fp).toString()
-                const processed = preprocess(raw, defines)
-                outStr += `\n__modules["${moduleName}"]={loader=function()\n`
-                outStr += processed
-                outStr += `\nend}\n`
-            }
-        } else if (st.isDirectory()) {
-            if (file.endsWith(".w3m") || file.endsWith(".w3x") || file.startsWith(".")) {
-                continue
-            }
-
-            if (excludeMap.dirs[fp] === 1) {
-                continue
-            }
-
-            recurseFiles(fp, excludeMap, defines)
-        } else {
-            logger.error("WTF is " + fp)
-        }
+function extractRequires(source) {
+    const deps = []
+    const re = /\brequire\s*\(\s*["']([^"']+)["']\s*\)/g
+    let m
+    while ((m = re.exec(source)) !== null) {
+        deps.push(m[1])
     }
+    return deps
+}
+
+/**
+ * Converts a module name (dot or slash separated) to an absolute file path.
+ * @param {string} name e.g. "Lib.Time" or "Lib/Time"
+ * @returns {string}
+ */
+function moduleNameToPath(name) {
+    const parts = name.split(/[.\/]/)
+    return path.join(workDir, ...parts) + ".lua"
+}
+
+/**
+ * Returns true if the given absolute path is excluded.
+ * @param {string} fp
+ * @param {{files: Object, dirs: Object}} excludeMap
+ * @returns {boolean}
+ */
+function isExcluded(fp, excludeMap) {
+    if (excludeMap.files[fp] === 1) return true
+    for (const dir of Object.keys(excludeMap.dirs)) {
+        if (fp.startsWith(dir + path.sep)) return true
+    }
+    return false
 }
 
 /**
@@ -117,8 +192,44 @@ end
             logger.error("WTF is " + resolvedExcludePath)
         }
     }
-    recurseFiles(workDir, excludeMap, defineSet)
-    const mainName = path.basename(mainPath, ".lua")
+    // Tree-shaking: BFS from the entry module, only emit reachable files
+    const entryName = path.basename(mainPath, ".lua")
+    const visited = new Set()
+    const queue = [entryName]
+    let emitted = 0
+    while (queue.length > 0) {
+        const name = queue.shift()
+        // Normalise: the runtime maps slash-paths to dot-paths, so always use dots
+        const normName = name.replace(/\//g, ".")
+        if (visited.has(normName)) continue
+        visited.add(normName)
+
+        const fp = moduleNameToPath(normName)
+        if (!fs.existsSync(fp) || !fs.statSync(fp).isFile()) {
+            logger.warn(`[tree-shake] module "${normName}" -> ${fp} not found, skipping`)
+            continue
+        }
+        if (isExcluded(fp, excludeMap)) {
+            logger.warn(`[tree-shake] module "${normName}" is excluded, skipping`)
+            continue
+        }
+
+        const raw = fs.readFileSync(fp).toString()
+        const processed = preprocess(raw, defineSet)
+        outStr += `\n__modules["${normName}"]={loader=function()\n`
+        outStr += processed
+        outStr += `\nend}\n`
+        emitted++
+
+        for (const dep of extractRequires(processed)) {
+            const normDep = dep.replace(/\//g, ".")
+            if (!visited.has(normDep)) {
+                queue.push(normDep)
+            }
+        }
+    }
+    logger.log(`[tree-shake] emitted ${emitted} module(s) reachable from "${entryName}"`)
+    const mainName = entryName
     outStr += `\n__modules["${mainName}"].loader()`
     if (minify) {
         outStr = luamin.minify(outStr)
@@ -144,7 +255,7 @@ end
  * @param {boolean} mode will minify source
  * @returns {void}
  */
-function injectWC3(mainPath, wc3path, mode, exclude, defines) {
+export function injectWC3(mainPath, wc3path, mode, exclude, defines) {
     logger.log("Injection mode")
     if (!fs.existsSync(wc3path) || !fs.statSync(wc3path).isFile()) {
         logger.error(`File not found ${wc3path}`)
@@ -226,7 +337,7 @@ end
  * @param {boolean} mode will minify source
  * @returns {void}
  */
-function toFile(mainPath, outPath, mode, exclude, defines) {
+export function toFile(mainPath, outPath, mode, exclude, defines) {
     logger.log("Write file mode")
     if (fs.existsSync(outPath) && fs.statSync(outPath).isDirectory()) {
         logger.error(`Target is dir ${outPath}`)
@@ -235,9 +346,4 @@ function toFile(mainPath, outPath, mode, exclude, defines) {
     let file = emitCode(mainPath, mode, exclude, defines)
     fs.writeFileSync(outPath, file)
     logger.success(`Write to ${outPath} success`)
-}
-
-export {
-    injectWC3,
-    toFile,
 }
