@@ -16,9 +16,22 @@ let workDir
 let outStr
 
 /**
+ * Processes --#IF FLAG THEN ... --#END blocks.
+ * Blocks whose flag is not in `defines` are removed entirely.
+ * @param {string} source
+ * @param {Set<string>} defines
+ * @returns {string}
+ */
+function preprocess(source, defines) {
+    return source.replace(/--#IF (\S+) THEN\r?\n([\s\S]*?)--#END/g, (_, flag, body) => {
+        return defines.has(flag) ? body : ""
+    })
+}
+
+/**
  * @param {fs.PathLike} dirName relative path
  */
-function recurseFiles(dir, excludeMap) {
+function recurseFiles(dir, excludeMap, defines) {
     const files = fs.readdirSync(dir)
     for (const file of files) {
         const fp = path.join(dir, file)
@@ -30,8 +43,10 @@ function recurseFiles(dir, excludeMap) {
 
             if (file.endsWith(".lua")) {
                 const moduleName = fp.replace(workDir, "").substring(1).replace(/\\/g, ".").replace(".lua", "")
+                const raw = fs.readFileSync(fp).toString()
+                const processed = preprocess(raw, defines)
                 outStr += `\n__modules["${moduleName}"]={loader=function()\n`
-                outStr += fs.readFileSync(fp)
+                outStr += processed
                 outStr += `\nend}\n`
             }
         } else if (st.isDirectory()) {
@@ -43,7 +58,7 @@ function recurseFiles(dir, excludeMap) {
                 continue
             }
 
-            recurseFiles(fp, excludeMap)
+            recurseFiles(fp, excludeMap, defines)
         } else {
             logger.error("WTF is " + fp)
         }
@@ -53,9 +68,13 @@ function recurseFiles(dir, excludeMap) {
 /**
  * Takes entry file and returns bundled lua source code.
  * @param {fs.PathLike} mainPath
+ * @param {boolean} minify
+ * @param {string[]} exclude
+ * @param {string[]} defines
  * @returns {string}
  */
-function emitCode(mainPath, minify, exclude) {
+function emitCode(mainPath, minify, exclude, defines) {
+    const defineSet = new Set(defines || [])
     if (!fs.existsSync(mainPath) || !fs.statSync(mainPath).isFile()) {
         logger.error(`File not found ${mainPath}`)
         process.exit(1)
@@ -98,7 +117,7 @@ end
             logger.error("WTF is " + resolvedExcludePath)
         }
     }
-    recurseFiles(workDir, excludeMap)
+    recurseFiles(workDir, excludeMap, defineSet)
     const mainName = path.basename(mainPath, ".lua")
     outStr += `\n__modules["${mainName}"].loader()`
     if (minify) {
@@ -125,13 +144,13 @@ end
  * @param {boolean} mode will minify source
  * @returns {void}
  */
-function injectWC3(mainPath, wc3path, mode, exclude) {
+function injectWC3(mainPath, wc3path, mode, exclude, defines) {
     logger.log("Injection mode")
     if (!fs.existsSync(wc3path) || !fs.statSync(wc3path).isFile()) {
         logger.error(`File not found ${wc3path}`)
         process.exit(1)
     }
-    let file = emitCode(mainPath, mode, exclude)
+    let file = emitCode(mainPath, mode, exclude, defines)
     const totalLen = file.length + overhead1.length + overhead2.length
     // pad source length with leading 0s
     let sourceLen = totalLen.toString()
@@ -207,13 +226,13 @@ end
  * @param {boolean} mode will minify source
  * @returns {void}
  */
-function toFile(mainPath, outPath, mode, exclude) {
+function toFile(mainPath, outPath, mode, exclude, defines) {
     logger.log("Write file mode")
     if (fs.existsSync(outPath) && fs.statSync(outPath).isDirectory()) {
         logger.error(`Target is dir ${outPath}`)
         process.exit(1)
     }
-    let file = emitCode(mainPath, mode, exclude)
+    let file = emitCode(mainPath, mode, exclude, defines)
     fs.writeFileSync(outPath, file)
     logger.success(`Write to ${outPath} success`)
 }

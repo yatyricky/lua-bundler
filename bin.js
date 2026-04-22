@@ -3,12 +3,13 @@ const main = require("./main")
 
 const args = process.argv.slice(2)
 
-const help = "lua-bundler <input.lua> <output.lua> [-p|--production] [-e|--exclude <path1;path2;...>]"
+const help = "lua-bundler <input.lua> <output.lua> [-p|--production] [-e|--exclude <path1;path2;...>] [-d|--define <FLAG1;FLAG2;...>]"
 
 let input = undefined
 let output = undefined
 let production = false
 let exclude = []
+let defines = []
 
 for (let i = 0; i < args.length; i++) {
     if (args[i] === "-p" || args[i] === "--production") {
@@ -21,6 +22,14 @@ for (let i = 0; i < args.length; i++) {
             process.exit(1)
         }
         exclude = args[i].split(";")
+    } else if (args[i] === "-d" || args[i] === "--define") {
+        i++
+        if (args[i] === undefined) {
+            logger.error(`-d must be followed with list of flags`)
+            logger.log(help)
+            process.exit(1)
+        }
+        defines = args[i].split(";")
     } else if (args[i].startsWith("-")) {
         logger.error(`unknown option ${args[i]}.`)
         logger.log(help)
@@ -45,7 +54,7 @@ if (input === undefined || output === undefined) {
 }
 
 if (output.endsWith("war3map.lua")) {
-    main.injectWC3(input, output, production, exclude)
+    main.injectWC3(input, output, production, exclude, defines)
 } else {
-    main.toFile(input, output, production, exclude)
+    main.toFile(input, output, production, exclude, defines)
 }
