@@ -6,7 +6,7 @@
   "main": "main.js",
   "bin": "bin.js",
   "scripts": {
-    "test": "node ./bin.js ./example/src/Main.lua ./example/dist/bundle.lua"
+    "test": "node ./bin.js -i ./example/src/Main.lua -o ./example/dist/bundle.lua"
   },
   "author": "Nef.",
   "license": "MIT",
