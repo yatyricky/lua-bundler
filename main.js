@@ -1,6 +1,7 @@
 import fs from "fs"
 import path from "path"
 import readline from "readline"
+import crypto from "crypto"
 import luamin from "luamin"
 import logger from "./logger.js"
 
@@ -237,16 +238,40 @@ end
     return outStr
 }
 
-const headerSize = 9
-const headerLead = "--lua-bundler:"
-const overhead1 = `--lua-bundler:ReplaceMe
-local function RunBundle()
-`
-const overhead2 = `
-end
---lua-bundler:ReplaceMe
+const HEADER_LEAD = "--lua-bundler:"
+const LEN_DIGITS = 9
+const HASH_CHARS = 16
+// Tag format: "<9-digit-total-len>/<16-hex-sha256-of-bundle-code>"  (26 chars)
+const TAG_SIZE = LEN_DIGITS + 1 + HASH_CHARS
 
-`
+// Fixed byte counts for the wrapper (tag slots are always TAG_SIZE chars):
+//   header: HEADER_LEAD(14) + tag(26) + \n(1) + "local function RunBundle()\n"(27) = 68
+//   footer: \nend\n(5) + HEADER_LEAD(14) + tag(26) + \n\n(2)                      = 47
+const BUNDLE_CODE_START = HEADER_LEAD.length + TAG_SIZE + 1 + "local function RunBundle()\n".length  // 68
+const FOOTER_LEN = "\nend\n".length + HEADER_LEAD.length + TAG_SIZE + "\n\n".length                   // 47
+const FIXED_OVERHEAD = BUNDLE_CODE_START + FOOTER_LEN  // 115
+
+/**
+ * Builds the bundler header+footer tag embedding total length and content hash.
+ * @param {string} bundleCode
+ * @returns {{ tag: string, totalLen: number }}
+ */
+function makeTag(bundleCode) {
+    const totalLen = FIXED_OVERHEAD + bundleCode.length
+    const lenPart = totalLen.toString().padStart(LEN_DIGITS, "0")
+    const hashPart = crypto.createHash("sha256").update(bundleCode).digest("hex").substring(0, HASH_CHARS)
+    return { tag: `${lenPart}/${hashPart}`, totalLen }
+}
+
+/**
+ * Wraps bundle code in the lua-bundler header/footer envelope.
+ * @param {string} bundleCode
+ * @returns {string}
+ */
+function wrapBundle(bundleCode) {
+    const { tag } = makeTag(bundleCode)
+    return `${HEADER_LEAD}${tag}\nlocal function RunBundle()\n${bundleCode}\nend\n${HEADER_LEAD}${tag}\n\n`
+}
 
 /**
  * Bundles lua source and inject into war3map.lua
@@ -261,40 +286,46 @@ export function injectWC3(mainPath, wc3path, mode, exclude, defines) {
         logger.error(`File not found ${wc3path}`)
         process.exit(1)
     }
-    let file = emitCode(mainPath, mode, exclude, defines)
-    const totalLen = file.length + overhead1.length + overhead2.length
-    // pad source length with leading 0s
-    let sourceLen = totalLen.toString()
-    for (let i = sourceLen.length; i < headerSize; i++) {
-        sourceLen = "0" + sourceLen
-    }
-
-    file = `${overhead1.replace("ReplaceMe", sourceLen)}${file}${overhead2.replace("ReplaceMe", sourceLen)}`
-    if (totalLen !== file.length) {
-        logger.error("source length calculation failed")
-        process.exit(1)
-    }
+    const bundleCode = emitCode(mainPath, mode, exclude, defines)
+    const file = wrapBundle(bundleCode)
+    const totalLen = file.length
 
     const all = fs.readFileSync(wc3path).toString()
-    if (all.startsWith(headerLead)) {
-        // replace
-        const currCodeLen = tryParseInt(all.substring(headerLead.length, headerLead.length + headerSize))
-        if (currCodeLen === 0) {
-            logger.error("Read already injected war3map.lua header failed. Please re-save map in WorldEditor and try again.")
+    if (all.startsWith(HEADER_LEAD)) {
+        // Parse existing tag from header
+        const rawTag = all.substring(HEADER_LEAD.length, HEADER_LEAD.length + TAG_SIZE)
+        const slashAt = rawTag.indexOf("/")
+
+        if (slashAt !== LEN_DIGITS) {
+            logger.error("Malformed bundler header tag. Please re-save map in WorldEditor and try again.")
+            process.exit(1)
+        }
+        const currLen = tryParseInt(rawTag.substring(0, LEN_DIGITS))
+        const currHash = rawTag.substring(LEN_DIGITS + 1)
+        if (currLen === 0) {
+            logger.error("Read injected header length failed. Please re-save map in WorldEditor and try again.")
             process.exit(1)
         }
 
-        // verify
-        const verification = tryParseInt(all.substring(currCodeLen - headerSize - 2, currCodeLen - 2)) // 2 LF
-        if (currCodeLen !== verification) {
-            logger.error("war3map.lua source may have been changed manually (injected source length check failed). Please re-save map in WorldEditor and try again.")
+        // Verify footer tag matches header tag (detects shifted boundaries)
+        const footerTagStart = currLen - FOOTER_LEN + "\nend\n".length + HEADER_LEAD.length
+        const footerTag = all.substring(footerTagStart, footerTagStart + TAG_SIZE)
+        if (footerTag !== rawTag) {
+            logger.error("war3map.lua footer tag mismatch (file may have been manually modified). Please re-save map in WorldEditor and try again.")
             process.exit(1)
         }
 
-        const body = all.substring(currCodeLen)
-        const newFile = `${file}${body}`
-        fs.writeFileSync(wc3path, newFile)
-        logger.success(`Update ${wc3path} success. Injected source length: ${currCodeLen} => ${totalLen}.`)
+        // Verify content hash (detects same-length edits)
+        const existingBundleCode = all.substring(BUNDLE_CODE_START, currLen - FOOTER_LEN)
+        const existingHash = crypto.createHash("sha256").update(existingBundleCode).digest("hex").substring(0, HASH_CHARS)
+        if (existingHash !== currHash) {
+            logger.error("war3map.lua bundle content hash mismatch (file may have been manually modified). Please re-save map in WorldEditor and try again.")
+            process.exit(1)
+        }
+
+        const body = all.substring(currLen)
+        fs.writeFileSync(wc3path, `${file}${body}`)
+        logger.success(`Update ${wc3path} success. Injected size: ${currLen} => ${totalLen}.`)
     } else {
         // inject new
         const ri = readline.createInterface({
