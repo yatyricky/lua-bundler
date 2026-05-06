@@ -26,6 +26,25 @@ lua-bundler "./example/src/Main.lua" "./example/dist/bundle.lua" -e "example/src
 lua-bundler "./example/src/Main.lua" "./example/dist/bundle.lua" -e "example/src/Reporter.lua;example\src\Dir"
 ```
 
+Add ```-d, --define``` to pass define flags for conditional compilation
+
+``` sh
+lua-bundler "./example/src/Main.lua" "./example/dist/bundle.lua" -d "DEBUG"
+lua-bundler "./example/src/Main.lua" "./example/dist/bundle.lua" -d "DEBUG;FEATURE_X"
+```
+
+Blocks wrapped in `--#IF FLAG THEN` / `--#END` are included only when the flag is defined. Expressions support `AND`, `OR`, `NOT`, and parentheses:
+
+```lua
+--#IF DEBUG THEN
+print("debug mode")
+--#END
+
+--#IF FEATURE_X AND NOT DEBUG THEN
+-- only included when FEATURE_X is defined and DEBUG is not
+--#END
+```
+
 ## Require flavours
 
 ```lua
